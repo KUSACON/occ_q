@@ -26,5 +26,22 @@ usage:
   - transform the camera in world space (Camera.<rotate/translate>)
   - give it a list of objects to render and a pygame surface
   - use Camera.render(<list of Object3D's>, <surface>)
+
+TODO:
+  - lighting
+  - clipping
+  - texturng
+  - culling
+  - depth buffering
+  - FPS style camera
+
+limitations:
+  - since everything renders using the CPU and it's written in python using pygame, it's sloooow
+    (not intended for any real world use anyway, i might rewrite this in c++/rust using
+     something like OpenGL one day)
+
+acknowledgements:
+  - inspired by OneLoneCoder's video series: https://www.youtube.com/watch?v=ih20l3pJoeU
+  - article on view transform and projection matrices: http://www.codinglabs.net/article_world_view_projection_matrix.aspx
  
  this project is not done yet, I'll clean it up and document it at some point :)
