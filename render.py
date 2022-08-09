@@ -1,0 +1,290 @@
+from vectors import Vector, Matrix
+from pygame import draw
+from math import radians, sin, cos, tan
+
+
+BLACK = (0., 0., 0.)
+WHITE = (255, 255, 255)
+
+
+def to_2d_point(vec: Vector):
+    return int(vec[0]), int(vec[1])
+
+
+class Triangle:
+    def __init__(self, p1: Vector, p2: Vector, p3: Vector):
+        self.p1 = p1
+        self.p2 = p2
+        self.p3 = p3
+
+    def __eq__(self, other):
+        return self.get_points() == other.get_points()
+
+    def get_points(self):
+        return self.p1, self.p2, self.p3
+
+    def get_edges(self):
+        return (self.p1, self.p2), (self.p2, self.p3), (self.p3, self.p1)
+
+    def flip(self):
+        return Triangle(self.p3, self.p2, self.p1)
+
+    def has_edge(self, edge, ordered=False):
+        for ed in self.get_edges():
+            if ordered:
+                if ed == edge:
+                    return True
+            else:
+                if (ed == edge) or (tuple(reversed(ed)) == edge):
+                    return True
+        return False
+
+    def is_connected(self, other):
+        for ed in other.get_edges():
+            if self.has_edge(ed):
+                return True
+        return False
+
+    def __repr__(self):
+        return f'Triangle({self.p1}, {self.p2}, {self.p3})'
+
+    def draw_wireframe(self, surface, color=WHITE):
+        for ed in self.get_edges():
+            p1, p2 = [to_2d_point(x) for x in ed]
+            draw.line(surface, color, p1, p2)
+        for pt in self.get_points():
+            p2d = to_2d_point(pt)
+            draw.circle(surface, color, p2d, 3)
+
+
+def has_same_winding(t1: Triangle, t2: Triangle):
+    if t1.is_connected(t2):
+        for ed in t1.get_edges():
+            if t2.has_edge(ed, ordered=True):
+                return False
+        return True
+    else:
+        raise ValueError("Triangles are not connected!")
+
+
+class Mesh:
+    def __init__(self, _tris: list, correct_winding=True, wireframe_color=WHITE):
+        self.default_wireframe_color = wireframe_color
+        if not correct_winding:
+            self.tris = _tris
+        else:
+            self.tris = []
+            if _tris:
+                to_process = [_tris.pop(0)]
+                while to_process:
+                    current_tr = to_process.pop()
+
+                    i = 0
+                    while i < len(_tris):
+                        if current_tr.is_connected(_tris[i]):
+                            if has_same_winding(current_tr, _tris[i]):
+                                to_process.append(_tris.pop(i))
+                            else:
+                                to_process.append(_tris.pop(i).flip())
+                        else:
+                            i += 1
+
+                    self.tris.append(current_tr)
+
+    @staticmethod
+    def load_from_file(file, correct_winding=True, wireframe_color=WHITE):
+        verts = []
+        tris = []
+        for line in file.readlines():
+            ln = line.strip('\n').split(' ')
+            if ln[0] == 'v':
+                coords = [float(x) for x in ln[1:]]
+                verts.append(Vector(coords))
+            elif ln[0] == 'f':
+                inds = [int(x) - 1 for x in ln[1:]]
+                pts = [verts[i] for i in inds]
+                tris.append(Triangle(*pts))
+        return Mesh(tris, correct_winding=correct_winding, wireframe_color=wireframe_color)
+
+    def get_tris(self):
+        return self.tris
+
+    def multiply_by_matrix(self, trans_m: Matrix):
+        new_tris = []
+        for tri in self.get_tris():
+            new_pts = []
+            for pt in tri.get_points():
+                if len(pt) == 3:
+                    pt.append(1.)
+                new_pt = trans_m * pt
+                if new_pt[3]:
+                    new_pt = new_pt / new_pt[3]
+                new_pts.append(new_pt)
+            new_tris.append(Triangle(*new_pts))
+        return Mesh(new_tris, correct_winding=False, wireframe_color=self.default_wireframe_color)
+
+    def transform(self, func):
+        new_tris = []
+        for tri in self.get_tris():
+            new_pts = []
+            for pt in tri.get_points():
+                new_pt = func(pt)
+                new_pts.append(new_pt)
+            new_tris.append(Triangle(*new_pts))
+        return Mesh(new_tris, correct_winding=False, wireframe_color=self.default_wireframe_color)
+
+    def draw_wireframe(self, surface, color=None):
+        if color is None:
+            color = self.default_wireframe_color
+        for tri in self.tris:
+            tri.draw_wireframe(surface, color=color)
+
+
+class Object3D:
+    def __init__(self, _mesh: Mesh = None, pos: Vector = None, rot: Vector = None, sc: Vector = None, degrees=False):
+        if pos is None:
+            pos = Vector(3, 0.)
+        if rot is None:
+            rot = Vector(3, 0.)
+        if sc is None:
+            sc = Vector(3, 1.)
+
+        if degrees:
+            rot = Vector([radians(x) for x in rot])
+
+        self.mesh = _mesh
+        self.translation, self.rotation, self.scaling = pos, rot, sc
+
+    @staticmethod
+    def construct_rotation_matrix(rotation: Vector, degrees=False):
+        if degrees:
+            rotation = Vector([radians(x) for x in rotation])
+
+        rx, ry, rz, *_ = rotation
+
+        rot_x = Matrix([[1., 0., 0., 0.],
+                        [0., cos(rx), -1. * sin(rx), 0.],
+                        [0., sin(rx), cos(rx), 0.],
+                        [0., 0., 0., 1.]])
+
+        rot_y = Matrix([[cos(ry), 0., sin(ry), 0.],
+                        [0., 1., 0., 0.],
+                        [-1. * sin(ry), 0., cos(ry), 0.],
+                        [0., 0., 0., 1.]])
+
+        rot_z = Matrix([[cos(rz), -1. * sin(rz), 0., 0.],
+                        [sin(rz), cos(rz), 0., 0.],
+                        [0., 0., 1., 0.],
+                        [0., 0., 0., 1.]])
+
+        return rot_z * rot_y * rot_x
+
+    @staticmethod
+    def construct_translation_matrix(translation: Vector):
+        return Matrix([[1., 0., 0., translation[0]],
+                       [0., 1., 0., translation[1]],
+                       [0., 0., 1., translation[2]],
+                       [0., 0., 0., 1.]])
+
+    @staticmethod
+    def construct_scale_matrix(scale: Vector):
+        return Matrix([[scale[0], 0., 0., 0.],
+                       [0., scale[1], 0., 0.],
+                       [0., 0., scale[2], 0.],
+                       [0., 0., 0., 1.]])
+
+    @staticmethod
+    def construct_transform_matrix(rotation: Vector = None, translation: Vector = None, scale: Vector = None, deg=False):
+        if rotation is None:
+            deg = False
+            rotation = Vector(3, 0.)
+        if translation is None:
+            translation = Vector(3, 0.)
+        if scale is None:
+            scale = Vector(3, 1.)
+
+        rot_m = Object3D.construct_rotation_matrix(rotation, degrees=deg)
+        trans_m = Object3D.construct_translation_matrix(translation)
+        scale_m = Object3D.construct_scale_matrix(scale)
+
+        return scale_m * trans_m * rot_m
+
+    def rotate(self, rotation: Vector, degrees=False):
+        if degrees:
+            rotation = Vector([radians(x) for x in rotation])
+        self.rotation += rotation
+
+    def translate(self, translation: Vector):
+        self.translation += translation
+
+    def scale(self, scaling: Vector):
+        for i, new_sc in enumerate(scaling):
+            self.scaling[i] = self.scaling[i] * new_sc
+
+    def reset(self):
+        self.translation = Vector(3, 0.)
+        self.rotation = Vector(3, 0.)
+        self.scaling = Vector(3, 1.)
+
+    def get_transform_matrix(self):
+        return Object3D.construct_transform_matrix(self.rotation,
+                                                   self.translation,
+                                                   self.scaling)
+
+    def to_worldspace(self):
+        trans_m = self.get_transform_matrix()
+        return self.multiply_by_matrix(trans_m)
+
+    def multiply_by_matrix(self, trans_m: Matrix):
+        return Object3D(self.mesh.multiply_by_matrix(trans_m))
+
+    def transform(self, func):
+        return Object3D(self.mesh.transform(func))
+
+    def get_mesh(self):
+        return self.mesh
+
+
+class Camera(Object3D):
+    def __init__(self, h, w, zfar, znear, fov_x, fov_y=None, pos: Vector = None, rot: Vector = None, degrees=False):
+        super().__init__(pos=pos, rot=rot, degrees=degrees)
+
+        if fov_y is None:
+            fov_y = fov_x
+
+        if degrees:
+            fov_x, fov_y = radians(fov_x), radians(fov_y)
+
+        self.height = h
+        self.width = w
+        self.zfar = zfar
+        self.znear = znear
+        self.fov_x = fov_x
+        self.fov_y = fov_y
+
+    def aspect_ratio(self):
+        return self.height / self.width
+
+    def construct_projection_matrix(self):
+        a = self.aspect_ratio()
+        fx = 1. / tan(self.fov_x / 2)
+        fy = 1. / tan(self.fov_y / 2)
+        zn = self.zfar / (self.zfar - self.znear)
+
+        return Matrix([[a * fx, 0., 0., 0.],
+                       [0., fy, 0., 0.],
+                       [0., 0., zn, 1.],
+                       [0., 0., -1. * zn * self.znear, 0.]])
+
+    def scale_to_view(self, vec):
+        return Vector([(vec[0] + 1) * 0.5 * self.width, (vec[1] + 1) * 0.5 * self.height, vec[2]])
+
+    def render(self, objects, surface):
+        camera_transform_m = self.get_transform_matrix().inv()
+        for obj in objects:
+            obj = obj.to_worldspace()  # Move into world space
+            obj = obj.multiply_by_matrix(camera_transform_m)  # Move into view space
+            obj = obj.multiply_by_matrix(self.construct_projection_matrix())  # Perspective projection
+            obj = obj.transform(self.scale_to_view)  # Scale to view
+
+            obj.get_mesh().draw_wireframe(surface)
