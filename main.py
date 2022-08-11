@@ -22,11 +22,11 @@ pygame.display.set_caption("Bad 3D Renderer")
 # canvas.fill(BLACK)
 
 #tris = [Triangle(*x) for x in CUBE_VERTS]
-#cube = CUBE
+cube = CUBE
 #cube2 = CUBE
-#cube.translate(Vector([0., 0., -10.]))
+# cube.translate(Vector([0., 0., -10.]))
 #cube.scale(Vector([1., 1., 2]))
-#cube = cube.to_worldspace()
+cube = cube.to_worldspace()
 #cube2.translate(Vector([1., 1., 1.]))
 #cube2.mesh.default_wireframe_color = RED
 
@@ -34,6 +34,7 @@ teapot_file = open('teapot.obj')
 teapot = Object3D(Mesh.load_from_file(teapot_file, correct_winding=False))
 
 objects = [teapot]
+lights = [Vector([0., 0., -1.])]
 camera = Camera(WINDOW_HEIGHT, WINDOW_WIDTH, 1000., 0.1, 120., degrees=True)
 camera.translate(Vector([0., 0., -10.]))
 
@@ -61,17 +62,17 @@ while running:
             mouse_down = False
         keys = pygame.key.get_pressed()
         if keys[pygame.K_w]:
-            camera.translate(Vector([0., 0., 0.1]))
+            camera.translate_fps(Vector([0., 0., 0.1]))
         if keys[pygame.K_s]:
-            camera.translate(Vector([0., 0., -0.1]))
+            camera.translate_fps(Vector([0., 0., -0.1]))
         if keys[pygame.K_SPACE]:
             camera.translate(Vector([0., 0.1, 0.]))
         if keys[pygame.K_LCTRL]:
             camera.translate(Vector([0., -0.1, 0.]))
         if keys[pygame.K_a]:
-            camera.translate(Vector([0.1, 0., 0.]))
+            camera.translate_fps(Vector([0.1, 0., 0.]))
         if keys[pygame.K_d]:
-            camera.translate(Vector([-0.1, 0., 0.]))
+            camera.translate_fps(Vector([-0.1, 0., 0.]))
         if keys[pygame.K_f]:
             camera.rotate(Vector([0., 1., 0.]), degrees=True)
         if keys[pygame.K_h]:
@@ -95,7 +96,7 @@ while running:
         mouse_pos = pygame.mouse.get_pos()
         # pygame.draw.circle(canvas, WHITE, mouse_pos, 5, 0)
 
-    camera.render(objects, window)
+    camera.render(objects, lights, window)
 
     '''
     for tr in tris:
@@ -111,7 +112,7 @@ while running:
             new_pt[0] += 1.
             new_pt[1] += 1.
 
-            new_pt[0] *= 0.5 * WINDOW_WIDTH
+            new_pt[0]cube *= 0.5 * WINDOW_WIDTH
             new_pt[1] *= 0.5 * WINDOW_HEIGHT
             
 
@@ -123,6 +124,8 @@ while running:
     # Update the window
     # window.blit(canvas, (0, 0))
     pygame.display.flip()
+
+    # objects[0].rotate(Vector([1., 1., 1.]), degrees=True)
 
     # Clamp FPS
     clock.tick(30)

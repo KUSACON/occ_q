@@ -80,14 +80,14 @@ class Vector(list):
 
     def __abs__(self):
         """Magnitude of the vector"""
-        return self.length()
+        return self.mag()
 
-    def length(self):
+    def mag(self):
         """Magnitude of the vector"""
-        return sum(self) ** 0.5
+        return sum([x ** 2 for x in self]) ** 0.5
 
     def normalize(self):
-        return self / self.length()
+        return self / self.mag()
 
 
 class Matrix(list):

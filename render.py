@@ -1,14 +1,7 @@
 from vectors import Vector, Matrix
 from pygame import draw
 from math import radians, sin, cos, tan
-
-
-BLACK = (0., 0., 0.)
-WHITE = (255, 255, 255)
-
-
-def to_2d_point(vec: Vector):
-    return int(vec[0]), int(vec[1])
+from helper import *
 
 
 class Triangle:
@@ -55,6 +48,39 @@ class Triangle:
         for pt in self.get_points():
             p2d = to_2d_point(pt)
             draw.circle(surface, color, p2d, 3)
+
+    def draw_fill_color(self, surface, color=WHITE):
+        draw.polygon(surface, color, [to_2d_point(x) for x in self.get_points()])
+
+    def get_normal(self):
+        v1 = Vector((self.p2 - self.p1)[:3])
+        v2 = Vector((self.p3 - self.p1)[:3])
+
+        normal = v1 * v2
+        return normal.normalize()
+
+    def multiply_by_matrix(self, trans_m: Matrix):
+        new_pts = []
+        for pt in self.get_points():
+            if len(pt) == 3:
+                pt.append(1.)
+            new_pt = trans_m * pt
+            if new_pt[3]:
+                new_pt = new_pt / new_pt[3]
+            new_pts.append(new_pt)
+        return Triangle(*new_pts)
+
+    def transform(self, func):
+        new_pts = []
+        for pt in self.get_points():
+            new_pt = func(pt)
+            new_pts.append(new_pt)
+        return Triangle(*new_pts)
+
+
+def fill_triangle(t: Triangle, surface, color=WHITE):
+    pts = [to_2d_point(x) for x in t.get_points()]
+    fill_triangle_2d(pts, surface, color)
 
 
 def has_same_winding(t1: Triangle, t2: Triangle):
@@ -112,32 +138,14 @@ class Mesh:
     def multiply_by_matrix(self, trans_m: Matrix):
         new_tris = []
         for tri in self.get_tris():
-            new_pts = []
-            for pt in tri.get_points():
-                if len(pt) == 3:
-                    pt.append(1.)
-                new_pt = trans_m * pt
-                if new_pt[3]:
-                    new_pt = new_pt / new_pt[3]
-                new_pts.append(new_pt)
-            new_tris.append(Triangle(*new_pts))
+            new_tris.append(tri.multiply_by_matrix(trans_m))
         return Mesh(new_tris, correct_winding=False, wireframe_color=self.default_wireframe_color)
 
     def transform(self, func):
         new_tris = []
         for tri in self.get_tris():
-            new_pts = []
-            for pt in tri.get_points():
-                new_pt = func(pt)
-                new_pts.append(new_pt)
-            new_tris.append(Triangle(*new_pts))
+            new_tris.append(tri.transform(func))
         return Mesh(new_tris, correct_winding=False, wireframe_color=self.default_wireframe_color)
-
-    def draw_wireframe(self, surface, color=None):
-        if color is None:
-            color = self.default_wireframe_color
-        for tri in self.tris:
-            tri.draw_wireframe(surface, color=color)
 
 
 class Object3D:
@@ -277,14 +285,33 @@ class Camera(Object3D):
                        [0., 0., -1. * zn * self.znear, 0.]])
 
     def scale_to_view(self, vec):
-        return Vector([(vec[0] + 1) * 0.5 * self.width, (vec[1] + 1) * 0.5 * self.height, vec[2]])
+        return Vector([(vec[0] + 1.) * 0.5 * self.width, (vec[1] + 1.) * 0.5 * self.height, vec[2]])
 
-    def render(self, objects, surface):
+    def translate_fps(self, translation):
+        rot_m = self.construct_rotation_matrix(self.rotation)
+        translation = vector3_by_matrix4(translation, rot_m)
+        self.translation += translation
+
+    def render(self, objects, lights, surface):
         camera_transform_m = self.get_transform_matrix().inv()
+        lights = [x.normalize() for x in lights]
         for obj in objects:
             obj = obj.to_worldspace()  # Move into world space
-            obj = obj.multiply_by_matrix(camera_transform_m)  # Move into view space
-            obj = obj.multiply_by_matrix(self.construct_projection_matrix())  # Perspective projection
-            obj = obj.transform(self.scale_to_view)  # Scale to view
+            # obj = obj.multiply_by_matrix(camera_transform_m)  # Move into view space
 
-            obj.get_mesh().draw_wireframe(surface)
+            for tri in obj.get_mesh().get_tris():
+                old_norm = tri.get_normal()
+                tri = tri.multiply_by_matrix(camera_transform_m)
+                norm = tri.get_normal()
+                if norm[2] < 0.:
+                    luminosity = sum([old_norm ^ x for x in lights]) / len(lights)
+                    cl = clamp(int(255 * luminosity), 0, 255)
+                    # print(f'light: {lights[0]}, norm: {norm}, lum: {luminosity}')
+
+                    tri = tri.multiply_by_matrix(self.construct_projection_matrix())  # Perspective projection
+                    tri = tri.transform(self.scale_to_view)  # Scale to view
+
+                    # print(tri)
+
+                    tri.draw_fill_color(surface, (cl, cl, cl))
+                    # tri.draw_wireframe(surface)
