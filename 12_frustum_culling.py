@@ -296,7 +296,50 @@ def get_view_matrices(camera_pos):
             [0, 0, 0, 1]
         ], dtype=np.float32)    # Down
     ]
+def capture_occlusions_from_positions(mesh, camera_positions, shader):
+    occlusions = []
+    original_pos = camera_pos.copy()  # Save the original camera position
+    for position in camera_positions:
+        camera_pos[:] = position[:3]  # Update camera position
+        update_view_projection(shader)  # Update view and projection matrices
+        mesh.check_occlusion()  # Perform the occlusion test
+        occlusions.append(mesh.occluded_faces.copy())
+    camera_pos[:] = original_pos  # Restore original camera position
+    return occlusions
 
+def update_view_projection(shader):
+    # Update view matrix based on the current camera position
+    view = np.eye(4, dtype=np.float32)  # Identity matrix
+    view[3, :3] = -camera_pos  # Update with the camera position (negative for translation)
+    glUniformMatrix4fv(glGetUniformLocation(shader, "view"), 1, GL_FALSE, view.ravel())
+
+    # Update projection matrix
+    projection = np.identity(4, dtype=np.float32)
+    fov = 45.0 * zoom
+    aspect = WINDOW_WIDTH / WINDOW_HEIGHT
+    near = 0.1
+    far = 100.0
+    projection[0, 0] = 1 / (aspect * np.tan(np.radians(fov) / 2))
+    projection[1, 1] = 1 / np.tan(np.radians(fov) / 2)
+    projection[2, 2] = -(far + near) / (far - near)
+    projection[2, 3] = -1
+    projection[3, 2] = -(2 * far * near) / (far - near)
+    glUniformMatrix4fv(glGetUniformLocation(shader, "projection"), 1, GL_FALSE, projection.ravel())
+
+
+def get_camera_positions():
+    return [
+        np.array([5, 0, 0]),   # Right
+        np.array([-5, 0, 0]),  # Left
+        np.array([0, 5, 0]),   # Top
+        np.array([0, -5, 0]),  # Bottom
+        np.array([0, 0, 5]),   # Front
+        np.array([0, 0, -5])   # Back
+    ]
+
+
+
+"""
 def capture_occlusions_from_positions(mesh, view_matrices):
     occlusions = []
     for view_matrix in view_matrices:
@@ -304,7 +347,7 @@ def capture_occlusions_from_positions(mesh, view_matrices):
         mesh.check_occlusion()
         occlusions.append(mesh.occluded_faces.copy())
     return occlusions
-
+"""
 def input_vector(prompt):
     try:
         return np.array(list(map(float, input(prompt).split())), dtype=np.float32)
@@ -390,22 +433,20 @@ while running:
         mesh.remove_occluded_faces()
         mesh.save_to_file('output/9_o_4_output_removedData_teapot_2.txt')
 
-    # Capture scene from six positions and find common occluded triangles on 'Y' key press
     if keys[pygame.K_y]:
         print("Capturing scene from six directions at the current position...")
-        # Define the bounding box based on the current camera position
         bounding_box_set = True
         box_size = 2  # Define the size of the bounding box
         min_bound = camera_pos - box_size / 2
         max_bound = camera_pos + box_size / 2
-        view_matrices = get_view_matrices(camera_pos)
+        camera_positions = get_camera_positions()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glUseProgram(current_shader)
         mesh.render()  # Render the scene normally to populate the depth buffer
         filtered_faces = mesh.filter_faces_in_area(min_bound, max_bound)
         original_faces = mesh.faces
         mesh.faces = filtered_faces
-        occlusions = capture_occlusions_from_positions(mesh, view_matrices)
+        occlusions = capture_occlusions_from_positions(mesh, camera_positions, current_shader)  # Pass positions
         mesh.faces = original_faces
         for i, occ in enumerate(occlusions):
             mesh.occluded_faces = occ
@@ -413,6 +454,7 @@ while running:
         mesh.common_occluded_faces(occlusions)
         mesh.save_occluded_faces('output/combined_occluded_faces.txt')
         print("Common occluded faces saved.")
+
 
     # Print camera positions on '6' key press
     if keys[pygame.K_6]:
