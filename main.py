@@ -1,7 +1,9 @@
 import pygame
-from examples import CUBE_VERTS, CUBE
 from render import Camera, Object3D, Triangle, Mesh
 from vectors import Vector
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from OpenGL.GLUT import *
 
 # Window size
 WINDOW_WIDTH = 500
@@ -15,40 +17,44 @@ WHITE = (255, 255, 255)
 
 # initialisation
 pygame.init()
-window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), WINDOW_SURFACE)
-pygame.display.set_caption("Bad 3D Renderer")
+pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
+pygame.display.set_caption("Occlusion Query with OpenGL")
 
-# canvas = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
-# canvas.fill(BLACK)
+# Initialize OpenGL settings
+glEnable(GL_DEPTH_TEST)
+glEnable(GL_LIGHTING)
+glEnable(GL_LIGHT0)
+glShadeModel(GL_SMOOTH)
 
-#tris = [Triangle(*x) for x in CUBE_VERTS]
-cube = CUBE
-#cube2 = CUBE
-# cube.translate(Vector([0., 0., -10.]))
-#cube.scale(Vector([1., 1., 2]))
-cube = cube.to_worldspace()
-#cube2.translate(Vector([1., 1., 1.]))
-#cube2.mesh.default_wireframe_color = RED
+# Define a simple light source
+glLightfv(GL_LIGHT0, GL_POSITION, (0, 0, 1, 0))
+glLightfv(GL_LIGHT0, GL_DIFFUSE, (1, 1, 1, 1))
 
-teapot_file = open('teapot.obj')
-teapot = Object3D(Mesh.load_from_file(teapot_file, correct_winding=False))
 
-objects = [teapot]
+# teapot_file = open('teapot.obj')
+teapot_file = open('office_2.obj')
+#teapot = Object3D(Mesh.load_from_file(teapot_file, correct_winding=False))
+
+mesh = Mesh.load_from_file('office_2.obj')
+# Set up an occlusion query
+query = glGenQueries(1)
+
+"""objects = [teapot]
 lights = [Vector([0., 0., -1.])]
 camera = Camera(WINDOW_HEIGHT, WINDOW_WIDTH, 1000., 0.1, 120., degrees=True)
-camera.translate(Vector([0., 0., -10.]))
+camera.translate(Vector([0., 0., -10.]))"""
 
 # Main Loop
 mouse_down = False
 clock = pygame.time.Clock()
 running = True
 while running:
-    window.fill(BLACK)
+    #window.fill(BLACK)
     # Handle user-input
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        elif event.type == pygame.WINDOWRESIZED:
+        """elif event.type == pygame.WINDOWRESIZED:
             # canvas = pygame.Surface((window.get_width(), window.get_height()))
             # canvas.fill(BLACK)
             camera = Camera(window.get_height(), window.get_width(),
@@ -89,14 +95,28 @@ while running:
             camera.reset()
             camera.translate(Vector([0., 0., -10.]))
             for obj in objects:
-                obj.reset()
+                obj.reset()"""
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glLoadIdentity()
+    gluLookAt(0, 0, -10, 0, 0, 0, 0, 1, 0)
+
+    # Start occlusion query
+    glBeginQuery(GL_SAMPLES_PASSED, query)
+    mesh.render()
+    glEndQuery(GL_SAMPLES_PASSED)
+
+    # Get query result
+    samples_passed = GLuint(0)
+    glGetQueryObjectuiv(query, GL_QUERY_RESULT, samples_passed)
+    print(f'Samples passed: {samples_passed.value}')
 
     # Mouse Movement
     if mouse_down:
         mouse_pos = pygame.mouse.get_pos()
         # pygame.draw.circle(canvas, WHITE, mouse_pos, 5, 0)
 
-    camera.render(objects, lights, window)
+    #camera.render(objects, lights, window)
 
     '''
     for tr in tris:
@@ -114,12 +134,11 @@ while running:
 
             new_pt[0]cube *= 0.5 * WINDOW_WIDTH
             new_pt[1] *= 0.5 * WINDOW_HEIGHT
-            
+
 
             cent = int(new_pt[0]), int(new_pt[1])
             pygame.draw.circle(window, WHITE, cent, 5)
     '''
-
 
     # Update the window
     # window.blit(canvas, (0, 0))
@@ -129,5 +148,8 @@ while running:
 
     # Clamp FPS
     clock.tick(30)
+
+# Save mesh data to a file
+mesh.save_to_file('occlusion_result.txt')
 
 pygame.quit()

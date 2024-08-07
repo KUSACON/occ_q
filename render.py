@@ -2,6 +2,9 @@ from vectors import Vector, Matrix
 from pygame import draw
 from math import radians, sin, cos, tan
 from helper import *
+from OpenGL.GL import *
+from OpenGL.GLUT import *
+import numpy as np
 
 
 class Triangle:
@@ -57,6 +60,9 @@ class Triangle:
         v2 = Vector((self.p3 - self.p1)[:3])
 
         normal = v1 * v2
+        magnitude = normal.mag()
+        if magnitude == 0:
+            return normal  # or return a default normal, e.g., Vector([0, 0, 1])
         return normal.normalize()
 
     def multiply_by_matrix(self, trans_m: Matrix):
@@ -94,43 +100,33 @@ def has_same_winding(t1: Triangle, t2: Triangle):
 
 
 class Mesh:
-    def __init__(self, _tris: list, correct_winding=True, wireframe_color=WHITE):
-        self.default_wireframe_color = wireframe_color
-        if not correct_winding:
-            self.tris = _tris
-        else:
-            self.tris = []
-            if _tris:
-                to_process = [_tris.pop(0)]
-                while to_process:
-                    current_tr = to_process.pop()
-
-                    i = 0
-                    while i < len(_tris):
-                        if current_tr.is_connected(_tris[i]):
-                            if has_same_winding(current_tr, _tris[i]):
-                                to_process.append(_tris.pop(i))
-                            else:
-                                to_process.append(_tris.pop(i).flip())
-                        else:
-                            i += 1
-
-                    self.tris.append(current_tr)
+    def __init__(self, vertices, faces):
+        self.vertices = vertices
+        self.faces = faces
 
     @staticmethod
-    def load_from_file(file, correct_winding=True, wireframe_color=WHITE):
-        verts = []
-        tris = []
-        for line in file.readlines():
-            ln = line.strip('\n').split(' ')
-            if ln[0] == 'v':
-                coords = [float(x) for x in ln[1:]]
-                verts.append(Vector(coords))
-            elif ln[0] == 'f':
-                inds = [int(x) - 1 for x in ln[1:]]
-                pts = [verts[i] for i in inds]
-                tris.append(Triangle(*pts))
-        return Mesh(tris, correct_winding=correct_winding, wireframe_color=wireframe_color)
+    def load_from_file(filename):
+        vertices = []
+        faces = []
+        with open(filename, 'r') as file:
+            for line in file:
+                if line.startswith('v '):
+                    vertices.append(list(map(float, line.strip().split()[1:])))
+                elif line.startswith('f '):
+                    faces.append([int(i.split('/')[0]) - 1 for i in line.strip().split()[1:]])
+        return Mesh(np.array(vertices, dtype=np.float32), faces)
+
+    def render(self):
+        glBegin(GL_TRIANGLES)
+        for face in self.faces:
+            for vertex in face:
+                glVertex3fv(self.vertices[vertex])
+        glEnd()
+
+    def save_to_file(self, filename):
+        with open(filename, 'w') as file:
+            for face in self.faces:
+                file.write('f ' + ' '.join([str(v + 1) for v in face]) + '\n')
 
     def get_tris(self):
         return self.tris
